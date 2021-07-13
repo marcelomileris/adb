@@ -1,0 +1,70 @@
+drop schema if exists adb cascade;
+create schema adb;
+
+create table adb.person_type (
+	id serial primary key,
+	name varchar(15) not null
+);
+insert into adb.person_type (name) values ('Visitante');
+insert into adb.person_type (name) values ('Empregado');
+
+create table adb.person_media_type (
+	id serial primary key,
+	name varchar(15) not null
+);
+insert into adb.person_media_type (name) values ('Foto');
+insert into adb.person_media_type (name) values ('Biometria');
+
+create table adb.person (
+	id serial primary key,
+	name varchar(32) not null,
+	type int not null references adb.person_type(id) on delete restrict,
+	cpf varchar(14) not null,
+	phone varchar(15),
+	company	varchar(32) not null,
+	last_update timestamp not null default current_timestamp
+);
+
+create table adb.person_media (
+	id serial primary key,
+	person_id int not null references adb.person(id) on delete cascade,
+	person_media_type_id int not null references adb.person_media_type(id) on delete restrict,
+	object_media text not null
+);
+
+create table adb.person_audit (
+	id serial primary key,
+	person_id int not null references adb.person(id) on delete cascade,
+	type int not null, /* 1 add | 2 update */
+	cpf_new varchar(14) not null,
+	cpf_old varchar(14),
+	last_update timestamp not null default current_timestamp
+);
+
+CREATE OR REPLACE FUNCTION adb.tgr_person_audit()
+RETURNS TRIGGER AS $$
+BEGIN
+	IF (TG_OP = 'INSERT') THEN
+		INSERT INTO adb.person_audit (person_id, type, cpf_new, cpf_old) values (NEW.id, 1, NEW.cpf, null);
+		RETURN NEW;
+	END IF;
+	IF (TG_OP = 'UPDATE') THEN
+		IF (NEW.cpf <> OLD.cpf) THEN
+			INSERT INTO adb.person_audit (person_id, type, cpf_new, cpf_old) values (OLD.id, 2, NEW.cpf, OLD.cpf);
+			RETURN NEW;
+		END IF;							
+	END IF;
+	RETURN NULL;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER tgr_person 
+AFTER INSERT OR UPDATE ON adb.person
+FOR EACH ROW EXECUTE PROCEDURE adb.tgr_person_audit();
+
+/* ****************** */
+INSERT INTO adb.person (name, type, cpf, phone, company) values ('Marcelo Mileris', 2, '32366588980', '19981308867', 'Freelancer');
+INSERT INTO adb.person_media (person_id, person_media_type_id, object_media) values (1, 1, '-');
+
+INSERT INTO adb.person (name, type, cpf, phone, company) values ('Cristiane Pereira', 2, '85475874599', '19992616661', 'Modas');
+INSERT INTO adb.person_media (person_id, person_media_type_id, object_media) values (2, 2, '-');
